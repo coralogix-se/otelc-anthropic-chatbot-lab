@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Optional: build and run the instrumented chatbot in-compose.
+  chatbot:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      REDIS_ADDR: redis:6379
+      LISTEN_ADDR: ":8080"
+      DB_PATH: /data/chatbot.db
+      STATIC_DIR: /app/web
+      OTEL_SERVICE_NAME: otelc-anthropic-chatbot
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-https://ingress.us2.coralogix.com:443}
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer ${CORALOGIX_API_KEY}
+      OTEL_RESOURCE_ATTRIBUTES: cx.application.name=otelc-lab,cx.subsystem.name=anthropic-chatbot,service.version=0.1.0
+    volumes:
+      - chatbot-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  chatbot-data:

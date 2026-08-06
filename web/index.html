@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>otelc Anthropic Chat Lab</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --ink: #e7ecf3;
+      --muted: #9aa8bc;
+      --accent: #3d9cf0;
+      --user: #243447;
+      --bot: #1e2a38;
+      --border: #2c3a4d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1c3b5a 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #16324a 0%, transparent 50%),
+        var(--bg);
+    }
+    main {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+      display: grid;
+      gap: 1rem;
+      min-height: 100vh;
+      grid-template-rows: auto 1fr auto;
+    }
+    header h1 {
+      margin: 0;
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-weight: 600;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 0.4rem 0 0;
+      color: var(--muted);
+      max-width: 46ch;
+      line-height: 1.45;
+    }
+    #meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    #log {
+      background: color-mix(in srgb, var(--panel) 92%, black);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 420px;
+    }
+    .msg {
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      max-width: 85%;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: var(--user);
+      border: 1px solid #35506c;
+    }
+    .msg.assistant {
+      align-self: flex-start;
+      background: var(--bot);
+      border: 1px solid var(--border);
+    }
+    .msg .role {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.75rem;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 3.2rem;
+      max-height: 10rem;
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--ink);
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 0 1.25rem;
+      background: linear-gradient(180deg, #4aa3f5, var(--accent));
+      color: #041018;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .error { color: #ff8f8f; font-size: 0.9rem; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>otelc · Anthropic Chat Lab</h1>
+      <p>
+        Zero-code OpenTelemetry compile instrumentation demo. HTTP, Anthropic,
+        Redis, SQLite, and slog spans/logs export to Coralogix.
+      </p>
+      <div id="meta">session: <span id="session">new</span></div>
+    </header>
+
+    <div id="log" aria-live="polite"></div>
+
+    <form id="chat-form">
+      <textarea id="message" placeholder="Ask something…" required></textarea>
+      <button type="submit" id="send">Send</button>
+    </form>
+    <div id="error" class="error" hidden></div>
+  </main>
+
+  <script>
+    const logEl = document.getElementById("log");
+    const form = document.getElementById("chat-form");
+    const messageEl = document.getElementById("message");
+    const sendBtn = document.getElementById("send");
+    const sessionEl = document.getElementById("session");
+    const errorEl = document.getElementById("error");
+
+    let sessionId = localStorage.getItem("otelc_session_id") || "";
+
+    function appendMessage(role, content) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.innerHTML = `<span class="role">${role}</span>${escapeHtml(content)}`;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      return s
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = messageEl.value.trim();
+      if (!message) return;
+
+      errorEl.hidden = true;
+      appendMessage("user", message);
+      messageEl.value = "";
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, message }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || data.message || `HTTP ${res.status}`);
+        }
+        sessionId = data.session_id;
+        localStorage.setItem("otelc_session_id", sessionId);
+        sessionEl.textContent = sessionId;
+        appendMessage("assistant", data.cached ? `${data.reply}\n\n(cached)` : data.reply);
+      } catch (err) {
+        errorEl.hidden = false;
+        errorEl.textContent = String(err.message || err);
+      } finally {
+        sendBtn.disabled = false;
+        messageEl.focus();
+      }
+    });
+
+    if (sessionId) {
+      sessionEl.textContent = sessionId;
+      fetch(`/api/sessions/${sessionId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (!data || !Array.isArray(data.messages)) return;
+          for (const m of data.messages) appendMessage(m.role, m.content);
+        })
+        .catch(() => {});
+    }
+  </script>
+</body>
+</html>

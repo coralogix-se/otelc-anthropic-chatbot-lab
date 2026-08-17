@@ -15,7 +15,7 @@ deps:
 ## Build with compile-time OpenTelemetry instrumentation
 build: deps
 	mkdir -p bin
-	$(OTELC) go build -o $(BINARY) ./cmd/chatbot
+	set -e; $(OTELC) go build -o $(BINARY) ./cmd/chatbot
 
 ## Reference build without instrumentation
 build-plain: deps

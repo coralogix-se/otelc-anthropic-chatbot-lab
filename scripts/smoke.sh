@@ -4,6 +4,12 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
 PROMPT="${PROMPT:-In one short sentence, what is OpenTelemetry compile-time instrumentation for Go?}"
 
+if ! curl -fsS --max-time 1 "$BASE_URL/healthz" >/dev/null 2>&1; then
+	if [ "$BASE_URL" = "http://127.0.0.1:8080" ] && curl -fsS --max-time 1 "http://[::1]:8080/healthz" >/dev/null 2>&1; then
+		BASE_URL="http://[::1]:8080"
+	fi
+fi
+
 echo "==> health"
 curl -fsS "$BASE_URL/healthz" | tee /tmp/otelc-lab-health.json
 echo

@@ -2,6 +2,8 @@
 
 MODULE := github.com/coralogix-se/otelc-anthropic-chatbot-lab
 BINARY := bin/chatbot
+GOBIN  := $(shell go env GOPATH)/bin
+export PATH := $(GOBIN):$(PATH)
 OTELC  ?= otelc
 
 .PHONY: deps build build-plain run docker-up docker-down smoke clean tidy

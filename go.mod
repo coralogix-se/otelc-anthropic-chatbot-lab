@@ -1,6 +1,6 @@
 module github.com/coralogix-se/otelc-anthropic-chatbot-lab
 
-go 1.26.5
+go 1.25.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.61.0
